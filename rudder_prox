@@ -1,39 +1,38 @@
 #!/usr/bin/env bash
 source <(curl -s https://raw.githubusercontent.com/tteck/Proxmox/main/misc/build.func)
-# Copyright (c) 2021-2024 tteck
-# Author: tteck (tteckster)
-# License: MIT
-# https://github.com/tteck/Proxmox/raw/main/LICENSE
+# Autor: Adaptado para instalar Rudder Server automáticamente
 
 function header_info {
 clear
 cat <<"EOF"
-    ____           __     __            
-   / __ \___  ____/ /__  / /_____  _____
-  / /_/ / _ \/ __  / _ \/ __/ __ \/ ___/
- / _, _/  __/ /_/ /  __/ /_/ /_/ / /    
-/_/ |_|\___/\__,_/\___/\__/\____/_/     
-
-     Rudder Server Installer
+   ____           __    __               
+  / __ \___  ____/ /___/ /___ _____  ___ 
+ / / / / _ \/ __  / __  / __ `/ __ \/ _ \
+/ /_/ /  __/ /_/ / /_/ / /_/ / / / /  __/
+\____/\___/\__,_/\__,_/\__,_/_/ /_/\___/ 
+                                         
+      AUTO INSTALLADOR - RUDDER SERVER    
 EOF
 }
 header_info
-echo -e "Loading..."
+echo -e "Cargando...\n"
+
 APP="Rudder"
-var_disk="8"
+var_disk="10"          # GB
 var_cpu="2"
-var_ram="4096"
+var_ram="2048"         # MB
 var_os="debian"
 var_version="12"
+
 variables
 color
 catch_errors
 
 function default_settings() {
   CT_TYPE="1"
-  PW=""
+  PW="rudder2024!"      # Contraseña root predefinida
   CT_ID=$NEXTID
-  HN=$NSAPP
+  HN="rudder"
   DISK_SIZE="$var_disk"
   CORE_COUNT="$var_cpu"
   RAM_SIZE="$var_ram"
@@ -41,48 +40,41 @@ function default_settings() {
   NET="dhcp"
   GATE=""
   APT_CACHER=""
-  APT_CACHER_IP=""
   DISABLEIP6="no"
   MTU=""
   SD=""
   NS=""
   MAC=""
   VLAN=""
-  SSH="no"
+  SSH="yes"            # Habilitar acceso SSH
   VERB="no"
   echo_default
-}
-
-function install_rudder() {
-  header_info
-  msg_info "Updating OS"
-  apt-get update &>/dev/null
-  apt-get upgrade -y &>/dev/null
-  msg_ok "System Updated"
-
-  msg_info "Installing Prerequisites"
-  apt-get install -y curl gnupg2 wget lsb-release ca-certificates apt-transport-https sudo &>/dev/null
-  msg_ok "Installed Prerequisites"
-
-  msg_info "Adding Rudder Repository"
-  curl -s https://packagecloud.io/install/repositories/rudder/rudder/script.deb.sh | bash &>/dev/null
-  msg_ok "Rudder Repository Added"
-
-  msg_info "Installing Rudder Server"
-  apt-get install -y rudder-server-root &>/dev/null
-  msg_ok "Rudder Server Installed"
-
-  msg_info "Starting Rudder Service"
-  systemctl enable rudder &>/dev/null
-  systemctl start rudder &>/dev/null
-  msg_ok "Rudder Service Started"
 }
 
 start
 build_container
 description
-install_rudder
 
-msg_ok "Completed Successfully!\n"
-echo -e "${APP} Server should be reachable by going to the following URL after initial setup completes.
-         ${BL}https://${IP}/rudder${CL} \n"
+### POST-INSTALLACIÓN AUTOMÁTICA DENTRO DEL CONTENEDOR
+msg_info "Instalando y configurando Rudder Server (esto puede tardar)..."
+
+lxc-attach -n $CT_ID -- bash -c "
+apt update &&
+apt install -y wget curl gnupg2 sudo ca-certificates lsb-release apt-transport-https &&
+wget https://repository.rudder.io/tools/rudder-setup &&
+chmod +x rudder-setup &&
+./rudder-setup setup-server latest
+"
+
+msg_ok "Rudder Server instalado"
+
+### MOSTRAR ACCESO
+IP=$(pct exec $CT_ID -- hostname -I | awk '{print $1}')
+echo -e "\n${APP} instalado correctamente 🎉"
+echo -e "🔗 Interfaz web:   ${BL}https://${IP}/rudder${CL}"
+echo -e "👤 Usuario web:    ${GN}admin${CL}"
+echo -e "🔑 Contraseña web: ${GN}admin${CL} (cámbiala al ingresar)"
+echo -e ""
+echo -e "📡 Acceso SSH:     ${GN}ssh root@${IP}${CL}"
+echo -e "🔐 Contraseña SSH: ${GN}rudder2024!${CL}"
+msg_ok "Finalizado correctamente"
