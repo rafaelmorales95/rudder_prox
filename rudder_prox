@@ -1,26 +1,25 @@
 #!/usr/bin/env bash
 source <(curl -s https://raw.githubusercontent.com/tteck/Proxmox/main/misc/build.func)
 # Copyright (c) 2021-2024 tteck
-# Author: RafaelAdonai (adonai)
+# Author: tteck (tteckster)
 # License: MIT
+# https://github.com/tteck/Proxmox/raw/main/LICENSE
 
 function header_info {
 clear
 cat <<"EOF"
-   _____           _     _             
-  |  __ \         | |   (_)            
-  | |__) |__  _ __| |__  _ _ __   __ _ 
-  |  _  // _ \ '__| '_ \| | '_ \ / _` |
-  | | \ \  __/ |  | | | | | | | | (_| |
-  |_|  \_\___|_|  |_| |_|_|_| |_|\__, |
-                                  __/ |
-                                 |___/ 
-       Rudder Server - Configuration Management
+    ____           __     __            
+   / __ \___  ____/ /__  / /_____  _____
+  / /_/ / _ \/ __  / _ \/ __/ __ \/ ___/
+ / _, _/  __/ /_/ /  __/ /_/ /_/ / /    
+/_/ |_|\___/\__,_/\___/\__/\____/_/     
+
+     Rudder Server Installer
 EOF
 }
 header_info
 echo -e "Loading..."
-APP="Rudder Server"
+APP="Rudder"
 var_disk="8"
 var_cpu="2"
 var_ram="4096"
@@ -34,7 +33,7 @@ function default_settings() {
   CT_TYPE="1"
   PW=""
   CT_ID=$NEXTID
-  HN="rudder-server"
+  HN=$NSAPP
   DISK_SIZE="$var_disk"
   CORE_COUNT="$var_cpu"
   RAM_SIZE="$var_ram"
@@ -49,39 +48,41 @@ function default_settings() {
   NS=""
   MAC=""
   VLAN=""
-  SSH="yes"
+  SSH="no"
   VERB="no"
   echo_default
 }
 
-function update_script() {
-header_info
-echo "Rudder updates are managed through apt. Run 'apt update && apt upgrade' inside the container."
-exit
+function install_rudder() {
+  header_info
+  msg_info "Updating OS"
+  apt-get update &>/dev/null
+  apt-get upgrade -y &>/dev/null
+  msg_ok "System Updated"
+
+  msg_info "Installing Prerequisites"
+  apt-get install -y curl gnupg2 wget lsb-release ca-certificates apt-transport-https sudo &>/dev/null
+  msg_ok "Installed Prerequisites"
+
+  msg_info "Adding Rudder Repository"
+  curl -s https://packagecloud.io/install/repositories/rudder/rudder/script.deb.sh | bash &>/dev/null
+  msg_ok "Rudder Repository Added"
+
+  msg_info "Installing Rudder Server"
+  apt-get install -y rudder-server-root &>/dev/null
+  msg_ok "Rudder Server Installed"
+
+  msg_info "Starting Rudder Service"
+  systemctl enable rudder &>/dev/null
+  systemctl start rudder &>/dev/null
+  msg_ok "Rudder Service Started"
 }
 
 start
 build_container
-
-LXC_CONFIG_PATH="/etc/pve/lxc/${CT_ID}.conf"
-
-pct exec $CT_ID -- bash -c "
-apt update
-apt install -y curl gnupg apt-transport-https ca-certificates lsb-release
-
-curl -fsSL https://repository.rudder.io/apt/rudder-apt.key | gpg --dearmor -o /usr/share/keyrings/rudder-archive-keyring.gpg
-
-echo 'deb [signed-by=/usr/share/keyrings/rudder-archive-keyring.gpg] https://repository.rudder.io/apt/6.2/ $(lsb_release -cs) main' > /etc/apt/sources.list.d/rudder.list
-
-apt update
-DEBIAN_FRONTEND=noninteractive apt install -y rudder-server-root
-"
-
-pct exec $CT_ID -- systemctl enable rudder-jetty
-pct exec $CT_ID -- systemctl start rudder-jetty
-
 description
+install_rudder
 
-msg_ok "Rudder Server installation completed!\n"
-echo -e "You can access the Rudder Web UI using the following URL:
-         ${BL}https://${IP}:8080${CL}\n"
+msg_ok "Completed Successfully!\n"
+echo -e "${APP} Server should be reachable by going to the following URL after initial setup completes.
+         ${BL}https://${IP}/rudder${CL} \n"
